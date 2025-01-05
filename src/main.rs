@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             //let lock_result = todo.lock();
             if my_todo.lock().expect("uh").len() > 0 {
                 while let Some(request) = my_todo.lock().expect("uh").pop_front() {
-                    warn!("received : {}", &request);
+                    warn!("worker read from todo : {}", &request);
                     tx.send(request).unwrap();
                 }
                 warn!("everything is done");
