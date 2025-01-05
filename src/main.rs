@@ -17,6 +17,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     warn!("launched");
 
+    let stdin_channel = spawn_stdin_channel();
+
     let vec: VecDeque<String> = VecDeque::new();
     let todo = Arc::new(Mutex::new(vec));
 
@@ -37,28 +39,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     loop {
-        let json_val = match lib::read_input(io::stdin()) {
-            Err(why) => panic!("{}", why.to_string()),
-            Ok(json_val) => json_val,
-        };
-        //if json_val == "ping" {
-        // your code here
+        match rx.try_recv() {
+            Ok(key) => warn!("Received from worker: {}", key),
+            Err(TryRecvError::Empty) => warn!("Channel empty"),
+            Err(TryRecvError::Disconnected) => warn!("Channel disconnected"),
+        }
 
-        if let Some(text) = json_val.get("text") {
+        match stdin_channel.try_recv() {
+            Ok(key) => warn!("Received from stdin reader: {}", key),
+            Err(TryRecvError::Empty) => warn!("Channel empty"),
+            Err(TryRecvError::Disconnected) => warn!("Channel disconnected"),
+        }
+
+        sleep(2000);
+
+        /*if let Some(text) = json_val.get("text") {
             todo.lock().expect("uh").push_back(text.to_string());
         }
         let response = serde_json::json!({ "text": "pong" });
         match lib::write_output(io::stdout(), &response) {
             Err(why) => panic!("{}", why.to_string()),
             Ok(_) => (),
-        };
-        //}
-
-        match rx.try_recv() {
-            Ok(key) => warn!("Received from worker: {}", key),
-            Err(TryRecvError::Empty) => warn!("Channel empty"),
-            Err(TryRecvError::Disconnected) => warn!("Channel disconnected"),
-        }
+        };*/
     }
 }
 
@@ -66,4 +68,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn sleep(millis: u64) {
     let duration = time::Duration::from_millis(millis);
     thread::sleep(duration);
+}
+
+fn spawn_stdin_channel() -> Receiver<String> {
+    let (tx, rx) = mpsc::channel::<String>();
+    thread::spawn(move || loop {
+        let mut buffer = String::new();
+        io::stdin().read_line(&mut buffer).unwrap();
+        if !buffer.is_empty() {
+            tx.send(buffer).unwrap();
+        }
+    });
+    rx
 }
