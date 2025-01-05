@@ -1,0 +1,7 @@
+{
+  "name": "org.devtom.ffx.download.all.companion",
+  "description": "Example host for native messaging",
+  "path": "/home/tom/RustroverProjects/ffx-download-all-companion/target/debug/org.devtom.ffx.download.all.companion",
+  "type": "stdio",
+  "allowed_extensions": ["ffx.download.all@devtom.org", "a6d03a7d-a67c-43c9-abef-863ff93c0042"]
+}
