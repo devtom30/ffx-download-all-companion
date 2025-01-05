@@ -31,8 +31,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     tx.send(request).unwrap();
                 }
                 warn!("everything is done");
-            } else {
-                warn!("nothing to do now");
             }
             sleep(2000);
         }
