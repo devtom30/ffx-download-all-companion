@@ -26,7 +26,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         loop {
             let json_val = match lib::read_input(io::stdin()) {
                 Err(why) => panic!("{}", why.to_string()),
-                Ok(json_val) => json_val,
+                Ok(json_val) => {
+                    warn!("received from browser json val: {json_val}");
+                    json_val
+                },
             };
 
             if let Some(text) = json_val.get("text") {
@@ -41,22 +44,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         loop {
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
             let response = serde_json::json!({ "text": String::from("pong ") + now.to_string().as_str() });
-            tx.send(response.to_string()).unwrap();
-            sleep(2000);
+            
         }
     });
 
     loop {
         match rx.try_recv() {
             Ok(response) => {
-                warn!("Received from worker: {}", response);
                 let response = serde_json::from_str(response.as_str()).unwrap();
                 match lib::write_output(io::stdout(), &response) {
                     Err(why) => panic!("{}", why.to_string()),
                     Ok(_) => (),
                 };
             },
-            Err(TryRecvError::Empty) => warn!("Channel empty"),
+            Err(TryRecvError::Empty) => (),
             Err(TryRecvError::Disconnected) => warn!("Channel disconnected"),
         }
     }
