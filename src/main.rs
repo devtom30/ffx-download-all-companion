@@ -1,11 +1,10 @@
 use log::warn;
-use log4rs::append::Append;
 use log4rs::init_file;
 use std::collections::VecDeque;
-use std::io::{self, BufRead};
+use std::io::{self};
 use std::sync::mpsc::{Receiver, Sender, TryRecvError};
-use std::sync::{mpsc, Arc, LockResult, Mutex};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{thread, time};
 
 mod lib;
