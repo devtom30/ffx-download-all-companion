@@ -18,9 +18,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let vec: VecDeque<String> = VecDeque::new();
     let todo = Arc::new(Mutex::new(vec));
+    let my_todo = todo.clone();
 
     let (tx, rx): (Sender<String>, Receiver<String>) = mpsc::channel();
-    let my_todo = todo.clone();
     let tx_input_reader = tx.clone();
     let worker = thread::spawn(move || {
         loop {
@@ -43,8 +43,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let worker2 = thread::spawn(move || {
         loop {
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
-            let response = serde_json::json!({ "text": String::from("pong ") + now.to_string().as_str() });
-            
+            // let response = serde_json::json!({ "text": String::from("pong ") + now.to_string().as_str() });
+            match my_todo.lock().expect("uh").pop_front() {
+                None => {}
+                Some(task) => {
+                    warn!("todo: {task}");
+                }
+            }
         }
     });
 
