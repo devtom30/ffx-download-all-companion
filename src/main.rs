@@ -23,34 +23,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let my_todo = todo.clone();
     let tx_input_reader = tx.clone();
     let worker = thread::spawn(move || {
-        /*loop {
-            //let lock_result = todo.lock();
-            if my_todo.lock().expect("uh").len() > 0 {
-                while let Some(request) = my_todo.lock().expect("uh").pop_front() {
-                    warn!("received : {}", &request);
-                    tx.send(request).unwrap();
-                }
-                warn!("everything is done");
-            } else {
-                warn!("nothing to do now");
-            }
-            sleep(2000);
-        }*/
-
         loop {
             let json_val = match lib::read_input(io::stdin()) {
                 Err(why) => panic!("{}", why.to_string()),
                 Ok(json_val) => json_val,
             };
-            //if json_val == "ping" {
-            // your code here
 
             if let Some(text) = json_val.get("text") {
                 todo.lock().expect("uh").push_back(text.to_string());
             }
             let response = serde_json::json!({ "text": "pong" });
             tx_input_reader.send(response.to_string()).unwrap();
-            //}
         }
     });
 
