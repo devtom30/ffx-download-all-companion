@@ -1,3 +1,4 @@
+use crate::lib::Task;
 use log::warn;
 use log4rs::init_file;
 use std::collections::VecDeque;
@@ -16,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     warn!("launched");
 
-    let vec: VecDeque<String> = VecDeque::new();
+    let vec: VecDeque<Task> = VecDeque::new();
     let todo = Arc::new(Mutex::new(vec));
     let my_todo = todo.clone();
 
@@ -31,11 +32,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     json_val
                 },
             };
-
-            if let Some(text) = json_val.get("text") {
-                todo.lock().expect("uh").push_back(text.to_string());
-            }
-            let response = serde_json::json!({ "text": "pong" });
+            
+            let text_response = if let Ok(task) = Task::try_from(&json_val) {
+                todo.lock().expect("uh").push_back(task.clone());
+                format!("received task {:?}", &task)
+            } else {
+                if let Some(text) = json_val.get("text") {
+                    format!("received text {text}")
+                } else {
+                    "received neither task nor text".to_string()
+                }
+            };
+            let response = serde_json::json!({ "text": text_response });
             tx_input_reader.send(response.to_string()).unwrap();
         }
     });
@@ -47,7 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             match my_todo.lock().expect("uh").pop_front() {
                 None => {}
                 Some(task) => {
-                    warn!("todo: {task}");
+                    warn!("todo: {:?}", task);
                 }
             }
         }
