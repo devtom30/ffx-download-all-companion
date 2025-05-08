@@ -1,56 +1,65 @@
+use std::fs::create_dir_all;
+use log::error;
 use scraper::{Html, Selector};
 use serde_json::Value;
+use regex::Regex;
+use serde::Deserialize;
+use crate::Conf;
 
 #[derive(Debug, Clone)]
 pub enum TaskType {
     PARSE,
     ATTACH
 }
-
-#[derive(Debug, Clone)]
-pub struct Task {
-    task_type: TaskType,
-    url: String
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "lowercase", tag = "task_type")]
+pub enum Task {
+    Parse{url: String, body: String, head: String},
+    Attach{url: String, file_path: String}
 }
 
-impl TryFrom<Option<&str>> for TaskType {
-    type Error = DESERIALIZATION_ERROR;
-    fn try_from(value: Option<&str>) -> Result<Self, Self::Error> {
-        match value {
-            Some("parse") => Ok(TaskType::PARSE),
-            Some("attach") => Ok(TaskType::ATTACH),
-            _ => Err(DESERIALIZATION_ERROR::UNKNOWN_TASK_TYPE)
+impl Task {
+    fn url(&self) -> &str {
+        match self {
+            Task::Parse{url, ..} => url,
+            Task::Attach{url, ..} => url
         }
     }
 }
 
+pub trait Executable {
+    fn execute(&self, conf: Conf) -> Result<(), String>;
+}
+
+impl Executable for Task { 
+    fn execute(&self, conf: Conf) -> Result<(), String> {
+        // save to filesystem
+        // extract path from URL
+        let path = remove_scheme_and_last_path_part_from_url(&self.url());
+        if path.is_none() {
+            error!("can't extract path from URL {}", self.url());
+            return Err("can't extract path from URL".to_string());
+        }
+        let path = path.unwrap();
+        // and create directory structure
+        if create_dir_all(&path).is_err() {
+            error!("path {} can't be created for URL {}", &path, self.url());
+            return Err("path can't be created for URL".to_string());
+        }
+        // save
+        
+        // parse html
+        // save links to database
+
+        return Err("path can't be created for URL".to_string());
+    }
+}
 
 
 pub enum DESERIALIZATION_ERROR {
     NO_TASK_TYPE,
     MISSING_FIELD,
     UNKNOWN_TASK_TYPE
-}
-impl TryFrom<&Value> for Task {
-    type Error = DESERIALIZATION_ERROR;
-    fn try_from(value: &Value) -> Result<Self, Self::Error> {
-        if let Some(task_type) = value.get("task_type") {
-            if let Ok(task_type) = TaskType::try_from(task_type.as_str()) {
-                if let Some(url) = value.get("url") {
-                    Ok(Self {
-                        task_type: task_type,
-                        url: url.to_string()
-                    })
-                } else {
-                    Err(DESERIALIZATION_ERROR::MISSING_FIELD)
-                }
-            } else {
-                Err(DESERIALIZATION_ERROR::UNKNOWN_TASK_TYPE)
-            }
-        } else {
-            return Err(DESERIALIZATION_ERROR::NO_TASK_TYPE);
-        }
-    }
 }
 
 pub struct ParsedHtml {
@@ -95,7 +104,7 @@ pub fn parse_html(html: &str, url: &str) -> ParsedHtml {
     });
     
     // img, iframe, audio, source
-    ["img", "ifram", "audio", "source"].iter().for_each(|element| {
+    ["img", "iframe", "audio", "source"].iter().for_each(|element| {
         let selector = Selector::parse(element).unwrap();
         for element in document.select(&selector) {
             if let Some(url) = element.value().attr("src") {
@@ -107,6 +116,16 @@ pub fn parse_html(html: &str, url: &str) -> ParsedHtml {
     });
 
     parsed_html
+}
+
+pub fn remove_scheme_and_last_path_part_from_url(url: &str) -> Option<String> {
+    let parts: Vec<&str> = url.split("/").into_iter().collect::<Vec<&str>>();
+    let re = Regex::new(r"^https?://(.+)/([^/]+)$").unwrap();
+    if let Some(caps) = re.captures(&url) {
+        Some(caps.get(1).unwrap().as_str().to_string())
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -147,5 +166,39 @@ mod tests {
         assert_eq!(parsed_html.assets[0], "link1".to_string());
         assert_eq!(parsed_html.assets[1], "link2".to_string());
         assert_eq!(parsed_html.assets[2], "link3".to_string());
+    }
+
+    #[test]
+    fn test_remove_scheme_and_last_path_part_from_url() {
+        let url = "https://www.example.com/foo/bar/baz";
+        let expected = "www.example.com/foo/bar";
+        assert_eq!(remove_scheme_and_last_path_part_from_url(url), Some(expected.to_string()));
+    }
+    
+    #[test]
+    fn test_deserialize_task_parse() {
+        let json = r#"{"task_type": "parse", "url": "https://www.example.com/foo/bar/baz", "body": "body", "head": "head"}"#;
+        let task: Task = serde_json::from_str(json).unwrap();
+        assert_eq!(task.url(), "https://www.example.com/foo/bar/baz");
+        
+        if let Task::Parse{url, body, head} = task {
+            assert_eq!(body, "body");
+            assert_eq!(head, "head");
+        } else {
+            panic!("task is not Parse");
+        }
+    }
+
+    #[test]
+    fn test_deserialize_task_attach() {
+        let json = r#"{"task_type": "attach", "url": "https://www.example.com/foo/bar/baz", "file_path":"/path/to/file"}"#;
+        let task: Task = serde_json::from_str(json).unwrap();
+        assert_eq!(task.url(), "https://www.example.com/foo/bar/baz");
+
+        if let Task::Attach{url, file_path} = task {
+            assert_eq!(file_path, "/path/to/file");
+        } else {
+            panic!("task is not Attach");
+        }
     }
 }

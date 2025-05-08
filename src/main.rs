@@ -7,6 +7,11 @@ use std::sync::mpsc::{Receiver, Sender, TryRecvError};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{thread, time};
+use app_properties::AppProperties;
+use serde_json::{from_str, from_value};
+
+#[derive(Default)]
+struct Config {}
 
 mod lib;
 
@@ -18,6 +23,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => { println!("{e}")}
     }
     warn!("launched");
+
+    /*let properties: AppProperties = AppProperties::new();
+    let conf = Conf::from(properties);*/
 
     let vec: VecDeque<Task> = VecDeque::new();
     let todo = Arc::new(Mutex::new(vec));
@@ -35,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 },
             };
             
-            let text_response = if let Ok(task) = Task::try_from(&json_val) {
+            let text_response = if let Ok(task) = from_value::<Task>(json_val.clone()) {
                 todo.lock().expect("uh").push_back(task.clone());
                 format!("received task {:?}", &task)
             } else {
@@ -66,7 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         match rx.try_recv() {
             Ok(response) => {
-                let response = serde_json::from_str(response.as_str()).unwrap();
+                let response = from_str(response.as_str()).unwrap();
                 match lib::write_output(io::stdout(), &response) {
                     Err(why) => panic!("{}", why.to_string()),
                     Ok(_) => (),
@@ -82,4 +90,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn sleep(millis: u64) {
     let duration = time::Duration::from_millis(millis);
     thread::sleep(duration);
+}
+
+#[derive(Clone)]
+struct Conf {
+    root_path: String,
+    sleep_between_requests: u64,
+}
+
+impl From<AppProperties> for Conf {
+    fn from(value: AppProperties) -> Self {
+        ["root_path", "sleep_between_requests"].iter()
+            .filter(|str| value.get(str).is_empty())
+            .for_each(|str| {
+                println!("{} is not set, can't start", str);
+                std::process::exit(1);
+            });
+        Conf {
+            root_path: value.get("root_path").parse().unwrap_or(String::from("~/ffx-download-all-companion/site")),
+            sleep_between_requests: value.get("sleep_between_requests").parse().unwrap_or(1),
+        }
+    }
 }
