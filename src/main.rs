@@ -1,4 +1,4 @@
-use crate::lib::Task;
+use crate::parsing::Task;
 use log::warn;
 use log4rs::init_file;
 use std::collections::VecDeque;
@@ -9,6 +9,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{thread, time};
 
 mod lib;
+
+mod parsing;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     match init_file("/home/tom/RustroverProjects/ffx-download-all-companion/log4rs.yml", Default::default()) {
