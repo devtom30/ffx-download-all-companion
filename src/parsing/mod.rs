@@ -1,21 +1,16 @@
-use std::fs::create_dir_all;
-use log::error;
-use scraper::{Html, Selector};
-use serde_json::Value;
-use regex::Regex;
-use serde::Deserialize;
 use crate::Conf;
+use log::error;
+use regex::Regex;
+use scraper::{Html, Selector};
+use serde::Deserialize;
+use std::fs;
+use std::fs::{create_dir_all, exists};
 
-#[derive(Debug, Clone)]
-pub enum TaskType {
-    PARSE,
-    ATTACH
-}
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "lowercase", tag = "task_type")]
 pub enum Task {
     Parse{url: String, body: String, head: String},
-    Attach{url: String, file_path: String}
+    Attach{url: String, file_path: String, page_url: String}
 }
 
 impl Task {
@@ -31,30 +26,60 @@ pub trait Executable {
     fn execute(&self, conf: Conf) -> Result<(), String>;
 }
 
-impl Executable for Task { 
+impl Executable for Task {
     fn execute(&self, conf: Conf) -> Result<(), String> {
-        // save to filesystem
-        // extract path from URL
-        let path = remove_scheme_and_last_path_part_from_url(&self.url());
-        if path.is_none() {
-            error!("can't extract path from URL {}", self.url());
-            return Err("can't extract path from URL".to_string());
-        }
-        let path = path.unwrap();
-        // and create directory structure
-        if create_dir_all(&path).is_err() {
-            error!("path {} can't be created for URL {}", &path, self.url());
-            return Err("path can't be created for URL".to_string());
-        }
-        // save
-        
-        // parse html
-        // save links to database
-
-        return Err("path can't be created for URL".to_string());
+        let url_last_part = extract_url_last_part(&self.url());
+        return match self {
+            Task::Parse { url, body, head} => {
+                // extract path from URL
+                let path = remove_scheme_and_last_path_part_from_url(&self.url());
+                if path.is_none() {
+                    error!("can't extract path from URL {}", self.url());
+                    return Err("can't extract path from URL".to_string());
+                }
+                let mut path = path.unwrap();
+                // and create directory structure
+                if create_dir_all(&path).is_err() {
+                    error!("path {} can't be created for URL {}", &path, self.url());
+                    return Err("path can't be created for URL".to_string());
+                }
+                
+                // save to filesystem
+                let mut data = "<html>\n".to_string();
+                data.push_str(head);
+                data.push_str(body);
+                data.push_str("\n</html>");
+                path.push_str("/");
+                path.push_str(url_last_part.as_str());
+                write_file_at_path(&path, url, data).unwrap();
+                Ok(())
+            },
+            Task::Attach { url, file_path, page_url } => {
+                let path = remove_scheme_and_last_path_part_from_url(&page_url);
+                if path.is_none() {
+                    error!("can't extract path from URL {}", self.url());
+                    return Err("can't extract path from URL".to_string());
+                }
+                let mut path = path.unwrap();
+                
+                let asset_path = remove_scheme_and_last_path_part_from_url(&url);
+                if asset_path.is_none() {
+                    error!("can't extract path from URL {}", &url);
+                    return Err("can't extract path from URL".to_string());
+                }
+                
+                let assets_path = path + "/assets/" + &asset_path.unwrap();
+                create_dir_all(&assets_path).unwrap();
+                fs::copy(file_path, assets_path + "/" + &url_last_part).unwrap();
+                Ok(())
+            }
+        };
     }
 }
 
+fn write_file_at_path(path: &String, url: &String, data: String) -> std::io::Result<()> {
+    fs::write(path, data)
+}
 
 pub enum DESERIALIZATION_ERROR {
     NO_TASK_TYPE,
@@ -128,6 +153,11 @@ pub fn remove_scheme_and_last_path_part_from_url(url: &str) -> Option<String> {
     }
 }
 
+pub fn extract_url_last_part(url: &str) -> String {
+    let parts: Vec<&str> = url.split("/").into_iter().collect::<Vec<&str>>();
+    parts.last().unwrap().to_string()   
+}
+
 #[cfg(test)]
 mod tests {
     // Note this useful idiom: importing names from outer (for mod tests) scope.
@@ -191,14 +221,66 @@ mod tests {
 
     #[test]
     fn test_deserialize_task_attach() {
-        let json = r#"{"task_type": "attach", "url": "https://www.example.com/foo/bar/baz", "file_path":"/path/to/file"}"#;
+        let json = r#"{"task_type": "attach", "url": "https://www.example.com/foo/bar/baz", "file_path":"/path/to/file", "page_url": "https://www.example.com/foo/bar/baz"}"#;
         let task: Task = serde_json::from_str(json).unwrap();
         assert_eq!(task.url(), "https://www.example.com/foo/bar/baz");
 
-        if let Task::Attach{url, file_path} = task {
+        if let Task::Attach{url, file_path, page_url} = task {
             assert_eq!(file_path, "/path/to/file");
+            assert_eq!(page_url, "https://www.example.com/foo/bar/baz");
         } else {
             panic!("task is not Attach");
         }
+    }
+
+    #[test]
+    fn test_task_parse_execute() {
+        let url = String::from("https://uh.com/ma/super/page/page_a_sauver.html");
+        let body = String::from("<body>voilà le body</body>");
+        let head = String::from("<head>voily le head</head>");
+        let task = Task::Parse {
+            url: url.clone(),
+            body: body.clone(),
+            head: head.clone()
+        };
+
+        task.execute(Conf { root_path: "".to_string(), sleep_between_requests: 0 });
+
+        assert!(exists("uh.com/ma/super/page").is_ok());
+        fs::remove_dir_all("uh.com").unwrap();
+    }
+    
+    #[test]
+    fn test_extract_url_last_part() {
+        let url = String::from("https://uh.com/ma/super/page/page_a_sauver.html");
+        assert_eq!(extract_url_last_part(&url), "page_a_sauver.html".to_string());
+    }
+    
+    #[test]
+    fn test_extract_url_last_part_no_slash() {
+        let url = String::from("https://uh.com/ma/super/page");
+        assert_eq!(extract_url_last_part(&url), "page".to_string());
+    }
+    
+    #[test]
+    fn test_execute_task_attach() {
+        fs::create_dir_all("uh.com/ma/super/page");
+        fs::create_dir_all("test/tmp/path/to/file");
+        fs::copy("test/resource/asset.txt", "test/tmp/path/to/file/asset.txt").unwrap();
+        
+        let page_url = String::from("https://uh.com/ma/super/page/page_a_sauver.html");
+        let file_path = String::from("test/tmp/path/to/file/asset.txt");
+        let url = String::from("https://assets-test.com/mon/super/asset");
+        let task = Task::Attach {
+            url: url.clone(),
+            file_path: file_path.clone(),
+            page_url: page_url.clone()
+        };
+        task.execute(Conf { root_path: "".to_string(), sleep_between_requests: 0 });
+        
+        assert!(exists("uh.com/ma/super/page/assets/assets-test.com/mon/super/asset").is_ok());
+        
+        fs::remove_dir_all("test/tmp/path").unwrap();
+        fs::remove_dir_all("uh.com").unwrap();
     }
 }
