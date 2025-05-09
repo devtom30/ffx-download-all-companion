@@ -14,7 +14,7 @@ pub enum Task {
 }
 
 impl Task {
-    fn url(&self) -> &str {
+    pub(crate) fn url(&self) -> &str {
         match self {
             Task::Parse{url, ..} => url,
             Task::Attach{url, ..} => url
@@ -23,11 +23,11 @@ impl Task {
 }
 
 pub trait Executable {
-    fn execute(&self, conf: Conf) -> Result<(), String>;
+    fn execute(&self) -> Result<(), String>;
 }
 
 impl Executable for Task {
-    fn execute(&self, conf: Conf) -> Result<(), String> {
+    fn execute(&self) -> Result<(), String> {
         let url_last_part = extract_url_last_part(&self.url());
         return match self {
             Task::Parse { url, body, head} => {
@@ -244,7 +244,7 @@ mod tests {
             head: head.clone()
         };
 
-        task.execute(Conf { root_path: "".to_string(), sleep_between_requests: 0 });
+        task.execute();
 
         assert!(exists("uh.com/ma/super/page").is_ok());
         fs::remove_dir_all("uh.com").unwrap();
@@ -276,7 +276,7 @@ mod tests {
             file_path: file_path.clone(),
             page_url: page_url.clone()
         };
-        task.execute(Conf { root_path: "".to_string(), sleep_between_requests: 0 });
+        task.execute();
         
         assert!(exists("uh.com/ma/super/page/assets/assets-test.com/mon/super/asset").is_ok());
         

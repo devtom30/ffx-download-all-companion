@@ -1,4 +1,4 @@
-use crate::parsing::Task;
+use crate::parsing::{Executable, Task};
 use log::warn;
 use log4rs::init_file;
 use std::collections::VecDeque;
@@ -58,14 +58,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    //let conf_clone = conf.clone();
     let worker2 = thread::spawn(move || {
         loop {
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
-            // let response = serde_json::json!({ "text": String::from("pong ") + now.to_string().as_str() });
             match my_todo.lock().expect("uh").pop_front() {
                 None => {}
                 Some(task) => {
-                    warn!("todo: {:?}", task);
+                    warn!("todo: {}", task.url());
+                    warn!("executing task now…");
+                    task.execute().unwrap()
                 }
             }
         }
