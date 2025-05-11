@@ -67,7 +67,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Some(task) => {
                     warn!("todo: {}", task.url());
                     warn!("executing task now…");
-                    task.execute().unwrap()
+                    match task.execute() {
+                        Err(why) => warn!("executed task Err {:?}", why),
+                        Ok(exec_ret) => {
+                            warn!("executed task Ok");
+                            for url in exec_ret.0 {
+                                warn!("preparing response");
+                                let response = serde_json::json!({
+                                    "url": url,
+                                    "page_url": exec_ret.1,
+                                    "task_type": "download"
+                                });
+                                warn!("sending response: {response}");
+                                match tx.send(response.to_string()) {
+                                    Err(why) => warn!("tx.send failed {}", why.to_string()),
+                                    Ok(_) => (),
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

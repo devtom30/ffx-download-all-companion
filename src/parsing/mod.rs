@@ -1,9 +1,10 @@
 use crate::Conf;
-use log::error;
+use log::{error, warn};
 use regex::Regex;
 use scraper::{Html, Selector};
 use serde::Deserialize;
-use std::fs;
+use std::{fmt, fs};
+use std::fmt::Formatter;
 use std::fs::{create_dir_all, exists};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -22,12 +23,23 @@ impl Task {
     }
 }
 
+/*impl fmt::Display for Task {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Task::Parse{url, body, head} =>
+                write!(f, "Task::Parse {} {} {}", url, body, head),
+            Task::Attach{url, page_url, file_path} =>
+                write!(f, "Task::Attach {} {} {}", url, page_url, file_path)
+        }
+    }
+}*/
+
 pub trait Executable {
-    fn execute(&self) -> Result<(), String>;
+    fn execute(&self) -> Result<(Vec<String>, String), String>;
 }
 
 impl Executable for Task {
-    fn execute(&self) -> Result<(), String> {
+    fn execute(&self) -> Result<(Vec<String>, String), String> {
         let url_last_part = extract_url_last_part(&self.url());
         return match self {
             Task::Parse { url, body, head} => {
@@ -46,13 +58,21 @@ impl Executable for Task {
                 
                 // save to filesystem
                 let mut data = "<html>\n".to_string();
+                data.push_str("\n<head>\n");
                 data.push_str(head);
+                data.push_str("\n</head>\n");
+                data.push_str("\n<body>\n");
                 data.push_str(body);
+                data.push_str("\n</body>\n");
                 data.push_str("\n</html>");
                 path.push_str("/");
                 path.push_str(url_last_part.as_str());
-                write_file_at_path(&path, url, data).unwrap();
-                Ok(())
+                write_file_at_path(&path, url, &data).unwrap();
+
+                // parse file to extract assets' URL
+                let parsed_html = parse_html(data.as_str(), url);
+
+                Ok((parsed_html.assets, url.to_string()))
             },
             Task::Attach { url, file_path, page_url } => {
                 let path = remove_scheme_and_last_path_part_from_url(&page_url);
@@ -70,14 +90,16 @@ impl Executable for Task {
                 
                 let assets_path = path + "/assets/" + &asset_path.unwrap();
                 create_dir_all(&assets_path).unwrap();
-                fs::copy(file_path, assets_path + "/" + &url_last_part).unwrap();
-                Ok(())
+                let target_path = assets_path + "/" + &url_last_part;
+                warn!("copying {} to {}", file_path, &target_path);
+                fs::copy(file_path, target_path).unwrap();
+                Ok((vec![], page_url.to_string()))
             }
         };
     }
 }
 
-fn write_file_at_path(path: &String, url: &String, data: String) -> std::io::Result<()> {
+fn write_file_at_path(path: &String, url: &String, data: &String) -> std::io::Result<()> {
     fs::write(path, data)
 }
 
@@ -91,8 +113,6 @@ pub struct ParsedHtml {
     assets: Vec<String>,
     url: String
 }
-
-
 
 /*
 extract URLs from these HTML elements:
