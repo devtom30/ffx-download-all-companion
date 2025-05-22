@@ -141,7 +141,8 @@ pub fn parse_html(html: &str, url: &str) -> ParsedHtml {
         let selector = Selector::parse(element).unwrap();
         for element in document.select(&selector) {
             if let Some(url) = element.value().attr("href") {
-                if (!parsed_html.assets.contains(&url.to_string())) {
+                if url_to_asset_to_be_downloaded(url)
+                    && !parsed_html.assets.contains(&url.to_string()) {
                     parsed_html.assets.push(url.to_string());
                 }
             }
@@ -149,11 +150,13 @@ pub fn parse_html(html: &str, url: &str) -> ParsedHtml {
     });
     
     // img, iframe, audio, source
-    ["img", "iframe", "audio", "source"].iter().for_each(|element| {
-        let selector = Selector::parse(element).unwrap();
+    ["img", "iframe", "audio", "source"].iter().for_each(|html_element| {
+        let selector = Selector::parse(html_element).unwrap();
         for element in document.select(&selector) {
             if let Some(url) = element.value().attr("src") {
-                if (!parsed_html.assets.contains(&url.to_string())) {
+                if url_to_asset_to_be_downloaded(url)
+                    && !parsed_html.assets.contains(&url.to_string())
+                    && !(html_element.cmp(&"iframe").is_eq() && url.ends_with(".pdf")) {
                     parsed_html.assets.push(url.to_string());
                 }
             }
@@ -161,6 +164,21 @@ pub fn parse_html(html: &str, url: &str) -> ParsedHtml {
     });
 
     parsed_html
+}
+
+fn url_to_asset_to_be_downloaded(url: &str) -> bool {
+    let re_pages = Regex::new(r"^https?://[^/]+/pages/.+").unwrap();
+    let re_blog = Regex::new(r"^https?://[^/]+/blog/.+").unwrap();
+    
+    !url.ends_with(".html")
+        && !re_pages.is_match(url)
+        && !re_blog.is_match(url)
+        && url.ne("https://benvenuti.e-monsite.com/")
+        && (
+        url.contains("benvenuti")
+            || url.contains("bravissimi")
+            || url.contains("ekla")
+    )
 }
 
 pub fn remove_scheme_and_last_path_part_from_url(url: &str) -> Option<String> {

@@ -71,6 +71,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Err(why) => warn!("executed task Err {:?}", why),
                         Ok(exec_ret) => {
                             warn!("executed task Ok");
+                            if !exec_ret.0.is_empty() {
+                                warn!("task returned list: {:?}", exec_ret.0);
+                            }
                             for url in exec_ret.0 {
                                 warn!("preparing response");
                                 let response = serde_json::json!({
